@@ -181,7 +181,9 @@ async function notifyApplicationReadyInternal() {
 }
 
 async function tryReportStatus(statusReport, retryOnAppResume) {
-  const config = await getConfiguration();
+  // A copy: getConfiguration() returns the cached object every other call shares,
+  // and the deployment key is replaced below with the reported package's.
+  const config = { ...(await getConfiguration()) };
   const previousLabelOrAppVersion = statusReport.previousLabelOrAppVersion;
   const previousDeploymentKey = statusReport.previousDeploymentKey || config.deploymentKey;
   try {
@@ -562,13 +564,19 @@ function codePushify(options = {}) {
           CodePush.sync(options, syncStatusCallback, downloadProgressCallback, handleBinaryVersionMismatchCallback);
 
           if (options.checkFrequency === CodePush.CheckFrequency.ON_APP_RESUME) {
-            ReactNative.AppState.addEventListener("change", (newState) => {
+            this.appStateSubscription = ReactNative.AppState.addEventListener("change", (newState) => {
               if (newState === "active") {
                 CodePush.sync(options, syncStatusCallback, downloadProgressCallback);
               }
             });
           }
         }
+      }
+
+      componentWillUnmount() {
+        // Otherwise every remount of the root component adds one more sync per resume.
+        this.appStateSubscription && this.appStateSubscription.remove();
+        this.appStateSubscription = null;
       }
 
       render() {

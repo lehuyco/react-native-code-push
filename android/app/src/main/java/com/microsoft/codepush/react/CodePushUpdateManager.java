@@ -178,8 +178,18 @@ public class CodePushUpdateManager {
             }
 
             connection.setRequestProperty("Accept-Encoding", "identity");
+            // Without timeouts a stalled network keeps the download, and with it sync(), waiting forever.
+            connection.setConnectTimeout(CodePushConstants.DOWNLOAD_CONNECT_TIMEOUT_MS);
+            connection.setReadTimeout(CodePushConstants.DOWNLOAD_READ_TIMEOUT_MS);
+
+            int responseCode = connection.getResponseCode();
+            if (responseCode < 200 || responseCode >= 300) {
+                throw new CodePushUnknownException("Received " + responseCode + " response from " + downloadUrlString);
+            }
+
             bin = new BufferedInputStream(connection.getInputStream());
 
+            // -1 when the server does not send a Content-Length (e.g. chunked transfer behind a proxy).
             long totalBytes = connection.getContentLength();
             long receivedBytes = 0;
 
@@ -209,7 +219,7 @@ public class CodePushUpdateManager {
                 progressCallback.call(new DownloadProgress(totalBytes, receivedBytes));
             }
 
-            if (totalBytes != receivedBytes) {
+            if (totalBytes >= 0 && totalBytes != receivedBytes) {
                 throw new CodePushUnknownException("Received " + receivedBytes + " bytes, expected " + totalBytes);
             }
 
